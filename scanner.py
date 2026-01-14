@@ -6,7 +6,7 @@ from typing import Dict, List
 
 # === НАСТРОЙКИ ===
 DEFAULT_HOST = "127.0.0.1"
-PORT_RANGE = range(1, 100)  # Можно расширить
+PORT_RANGE = range(8999, 9005)  # Можно расширить
 TIMEOUT_CONNECT = 2
 TIMEOUT_READ = 3
 
