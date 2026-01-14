@@ -1,0 +1,4 @@
+crape_configs:
+  - job_name: 'security-proxy'
+    static_configs:
+      - targets: ['localhost:8000']
