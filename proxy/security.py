@@ -2,6 +2,8 @@ import socket
 import threading
 import time
 import re
+import os
+from datetime import datetime
 from prometheus_client import Counter, Histogram, start_http_server
 
 # === МЕТРИКИ PROMETHEUS ===
@@ -19,9 +21,31 @@ TARGET_PORT_WEB = 5000
 TARGET_PORT_DB = 5001
 TARGET_PORT_ADMIN = 5002
 
+# Настройка папки для логов
+LOG_DIR = "logs"
+if not os.path.exists(LOG_DIR):
+    try: os.makedirs(LOG_DIR)
+    except: pass
+LOG_FILE = os.path.join(LOG_DIR, "security_events.log")
+
+def write_log(client_ip, port, action, details):
+    """Пишет лог в консоль и в файл"""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_line = f"[{timestamp}] {client_ip:<15} -> :{port} | {action:<20} | {details}"
+        
+        # 1. В консоль (для docker logs)
+        print(log_line, flush=True)
+        
+        # 2. В файл
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_line + "\n")
+    except Exception:
+        pass # Логирование не должно ломать работу прокси
+
 def init_metrics():
-    """Инициализация метрик нулями, чтобы Grafana сразу видела данные"""
-    print(">>> Инициализация метрик Prometheus...")
+    """Инициализация метрик нулями"""
+    print(">>> Инициализация метрик Prometheus...", flush=True)
     ports = [str(PROXY_PORT_WEB), str(PROXY_PORT_DB), str(PROXY_PORT_ADMIN)]
     for p in ports:
         REQUESTS_TOTAL.labels(port=p, action="none").inc(0)
@@ -30,6 +54,7 @@ def init_metrics():
 def proxy_http(client_sock, client_addr):
     start = time.time()
     port_label = str(PROXY_PORT_WEB)
+    client_ip = client_addr[0]
     
     try:
         client_sock.settimeout(5.0)
@@ -44,7 +69,11 @@ def proxy_http(client_sock, client_addr):
                 break
 
         if not request:
+            # 1. Метрика
             REQUESTS_TOTAL.labels(port=port_label, action="empty_request").inc()
+            # 2. Лог
+            write_log(client_ip, PROXY_PORT_WEB, "DROP_EMPTY", "Пустой запрос (Scan)")
+            # 3. Сеть
             client_sock.sendall(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
             return
 
@@ -55,6 +84,7 @@ def proxy_http(client_sock, client_addr):
             target.connect((TARGET_HOST, TARGET_PORT_WEB))
             target.sendall(request)
         except OSError:
+            write_log(client_ip, PROXY_PORT_WEB, "ERROR", "App недоступен")
             return
 
         response = b""
@@ -71,14 +101,20 @@ def proxy_http(client_sock, client_addr):
         try:
             resp_str = response.decode('utf-8', errors='ignore')
             
+            # Лог действий
+            if "Warehouse" in resp_str:
+                write_log(client_ip, PROXY_PORT_WEB, "OBFUSCATION", "Скрыты заголовки")
+            else:
+                write_log(client_ip, PROXY_PORT_WEB, "FORWARD", "Пропущен")
+
             # Подмена заголовков
             resp_str = re.sub(r'^Server:.*$', 'Server: Apache/2.4.52', resp_str, flags=re.MULTILINE)
             resp_str = re.sub(r'Warehouse ERP v2\.4', 'Internal Portal', resp_str, flags=re.IGNORECASE)
-            resp_str = re.sub(r'Warehouse Management System', 'Service Dashboard', resp_str, flags=re.IGNORECASE)
-            resp_str = re.sub(r'Powered by Python Legacy Backend', 'Powered by Secure Infrastructure', resp_str, flags=re.IGNORECASE)
             
-            # Считаем метрику ПЕРЕД отправкой
+            # 1. Метрика (До отправки!)
             REQUESTS_TOTAL.labels(port=port_label, action="allowed_with_filtering").inc()
+            
+            # 2. Отправка
             client_sock.sendall(resp_str.encode('utf-8'))
             
         except Exception:
@@ -96,14 +132,18 @@ def proxy_http(client_sock, client_addr):
 def proxy_tcp_generic(client_sock, client_addr, target_port, fake_banner=None, proxy_port=None):
     start = time.time()
     port_label = str(proxy_port)
+    client_ip = client_addr[0]
     
     try:
         if fake_banner:
-            # 1. Считаем метрики (Сразу!)
+            # 1. Метрики (Сразу!)
             BLOCKED_REQUESTS.labels(port=port_label).inc()
             REQUESTS_TOTAL.labels(port=port_label, action="fake_banner_sent").inc()
             
-            # 2. Отправляем фейк
+            # 2. Лог
+            write_log(client_ip, proxy_port, "HONEYPOT_TRIGGER", f"Атака перехвачена")
+            
+            # 3. Сеть
             client_sock.sendall(fake_banner.encode() + b"\n")
         else:
             # Прямой прокси
@@ -131,7 +171,7 @@ def serve(port, func, **kwargs):
     try:
         server.bind(("0.0.0.0", port))
         server.listen(10)
-        print(f"🛡️ Proxy запущен на порту {port}")
+        print(f"🛡️ Proxy запущен на порту {port}", flush=True)
     except Exception as e:
         print(f"Ошибка запуска на порту {port}: {e}")
         return
@@ -144,11 +184,11 @@ def serve(port, func, **kwargs):
             pass
 
 if __name__ == "__main__":
-    # Запуск сервера метрик
     start_http_server(8000)
     init_metrics()
+    
+    print(f">>> Логирование включено в {LOG_FILE}", flush=True)
 
-    # Запуск потоков
     threading.Thread(target=serve, args=(PROXY_PORT_WEB, proxy_http), daemon=True).start()
     
     threading.Thread(target=serve, args=(PROXY_PORT_DB, proxy_tcp_generic), 
