@@ -1,13 +1,19 @@
-warehouse-security-pattern/
-├── app/                 # Основное приложение
-│   ├── app.py
-│   └── Dockerfile.app
-├── proxy/               # Security Proxy
-│   ├── security.py
-│   └── Dockerfile.proxy
-├── scanner/             # Сканер (для тестирования, не в прод)
-│   └── scanner.py
-├── monitoring/
-│   └── prometheus.yml   # Конфиг Prometheus
-├── docker-compose.yml   # Оркестрация
-└── README.md
+## Описание компонентов
+
+- **`app/`** — основное приложение:
+  - `app.py` — основной код приложения;
+  - `Dockerfile.app` — Docker-файл для сборки контейнера приложения.
+
+- **`proxy/`** — Security Proxy:
+  - `security.py` — код прокси-сервера безопасности;
+  - `Dockerfile.proxy` — Docker-файл для сборки контейнера прокси.
+
+- **`scanner/`** — сканер (используется только для тестирования, не предназначен для продакшена):
+  - `scanner.py` — код сканера.
+
+- **`monitoring/`** — конфигурация мониторинга:
+  - `prometheus.yml` — конфигурационный файл Prometheus.
+
+- **`docker-compose.yml`** — файл для оркестрации контейнеров с помощью Docker Compose.
+
+- **`README.md`** — данный файл с описанием проекта.
