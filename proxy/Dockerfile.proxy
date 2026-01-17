@@ -1,0 +1,10 @@
+# proxy/Dockerfile.proxy
+FROM python:3.11-slim
+
+WORKDIR /proxy
+COPY security.py .
+RUN pip install --no-cache-dir prometheus_client
+
+EXPOSE 9000 9001 9002 8000
+
+CMD ["python", "security.py"]

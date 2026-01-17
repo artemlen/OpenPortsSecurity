@@ -15,7 +15,7 @@ def service_web_ui():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        server.bind(("127.0.0.1", PORT_WEB))
+        server.bind(("0.0.0.0", PORT_WEB))
         server.listen(5)
         server.settimeout(1.0)  # чтобы accept() не блокировался навсегда
         print(f"[APP] Web UI запущен на порту {PORT_WEB}")
@@ -71,7 +71,7 @@ def service_database_mock():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        server.bind(("127.0.0.1", PORT_DB_MOCK))
+        server.bind(("0.0.0.0", PORT_DB_MOCK))
         server.listen(5)
         server.settimeout(1.0)
         print(f"[APP] Data Service (Mock) запущен на порту {PORT_DB_MOCK}")
@@ -109,7 +109,7 @@ def service_admin_console():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        server.bind(("127.0.0.1", PORT_ADMIN))
+        server.bind(("0.0.0.0", PORT_ADMIN))
         server.listen(5)
         server.settimeout(1.0)
         print(f"[APP] Admin Console запущен на порту {PORT_ADMIN}")

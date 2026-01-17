@@ -1,3 +1,4 @@
+# security.py
 import socket
 import threading
 import time
@@ -15,12 +16,13 @@ PROXY_PORT_WEB = 9000
 PROXY_PORT_DB = 9001
 PROXY_PORT_ADMIN = 9002
 
-TARGET_HOST = "127.0.0.1"
+TARGET_HOST = "app"  # Имя сервиса в Docker-сети
 TARGET_PORT_WEB = 5000
 TARGET_PORT_DB = 5001
 TARGET_PORT_ADMIN = 5002
 
 LOG_FILE = "security.log"
+
 
 def log_event(event: str):
     line = f"[{datetime.now().isoformat()}] {event}"
@@ -28,28 +30,51 @@ def log_event(event: str):
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
-# === Прокси-функции с метриками ===
 
 def proxy_http(client_sock, client_addr):
     start = time.time()
     port_label = str(PROXY_PORT_WEB)
     try:
-        target = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        target.connect((TARGET_HOST, TARGET_PORT_WEB))
-        request = client_sock.recv(4096)
+        # Устанавливаем таймаут на клиентский сокет для ожидания данных
+        client_sock.settimeout(5.0)
+
+        request = b""
+        while True:
+            try:
+                chunk = client_sock.recv(4096)
+                if not chunk:
+                    break
+                request += chunk
+                # Простой признак конца HTTP-заголовков
+                if b"\r\n\r\n" in request or len(request) > 8192:
+                    break
+            except socket.timeout:
+                break
+
         if not request:
             REQUESTS_TOTAL.labels(port=port_label, action="empty_request").inc()
+            # Отправляем корректный HTTP-ответ вместо молчания
+            client_sock.sendall(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n")
             return
 
+        # Подключаемся к целевому сервису
+        target = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        target.settimeout(5.0)
+        target.connect((TARGET_HOST, TARGET_PORT_WEB))
         target.sendall(request)
+
         response = b""
         while True:
-            chunk = target.recv(4096)
-            if not chunk:
+            try:
+                chunk = target.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            except socket.timeout:
                 break
-            response += chunk
         target.close()
 
+        # Фильтрация и подмена баннеров
         try:
             resp_str = response.decode('utf-8', errors='ignore')
             resp_str = re.sub(r'^Server:.*$', 'Server: Apache/2.4.52', resp_str, flags=re.MULTILINE)
@@ -59,15 +84,24 @@ def proxy_http(client_sock, client_addr):
             client_sock.sendall(resp_str.encode('utf-8'))
             REQUESTS_TOTAL.labels(port=port_label, action="allowed_with_filtering").inc()
         except Exception:
+            # Если декодирование/фильтрация сломались — отправляем как есть
             client_sock.sendall(response)
             REQUESTS_TOTAL.labels(port=port_label, action="raw_forward").inc()
 
     except Exception as e:
         log_event(f"HTTP ERROR: {client_addr} – {e}")
+        try:
+            client_sock.sendall(b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n")
+        except:
+            pass
     finally:
         duration = time.time() - start
         REQUEST_DURATION.labels(port=port_label).observe(duration)
-        client_sock.close()
+        try:
+            client_sock.close()
+        except:
+            pass
+
 
 def proxy_tcp_generic(client_sock, client_addr, target_port, fake_banner=None, hide_real=True, proxy_port=None):
     start = time.time()
@@ -79,13 +113,15 @@ def proxy_tcp_generic(client_sock, client_addr, target_port, fake_banner=None, h
             REQUESTS_TOTAL.labels(port=port_label, action="fake_banner_sent").inc()
             log_event(f"TCP FAKE: {client_addr[0]}:{client_addr[1]} → фейковый баннер")
         else:
-            # Прямой прокси (редко используется)
+            # Прямой прокси (в текущей архитектуре не используется)
             target = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target.settimeout(5.0)
             target.connect((TARGET_HOST, target_port))
             data = client_sock.recv(1024)
-            target.sendall(data)
-            resp = target.recv(4096)
-            client_sock.sendall(resp)
+            if data:
+                target.sendall(data)
+                resp = target.recv(4096)
+                client_sock.sendall(resp)
             REQUESTS_TOTAL.labels(port=port_label, action="direct_proxy").inc()
             target.close()
     except Exception as e:
@@ -93,9 +129,11 @@ def proxy_tcp_generic(client_sock, client_addr, target_port, fake_banner=None, h
     finally:
         duration = time.time() - start
         REQUEST_DURATION.labels(port=port_label).observe(duration)
-        client_sock.close()
+        try:
+            client_sock.close()
+        except:
+            pass
 
-# === СЛУЖБЫ ===
 
 def serve_web():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -106,6 +144,7 @@ def serve_web():
     while True:
         client, addr = server.accept()
         threading.Thread(target=proxy_http, args=(client, addr), daemon=True).start()
+
 
 def serve_db():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -126,6 +165,7 @@ def serve_db():
             daemon=True
         ).start()
 
+
 def serve_admin():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -145,11 +185,11 @@ def serve_admin():
             daemon=True
         ).start()
 
-# === ЗАПУСК ===
+
 if __name__ == "__main__":
-    # Запускаем HTTP-сервер метрик Prometheus на порту 8000
+    # Запуск сервера метрик Prometheus (только внутри Docker-сети)
     start_http_server(8000)
-    print("📊 Prometheus metrics доступны на http://localhost:8000/metrics")
+    print("📊 Prometheus metrics доступны внутри сети на http://proxy:8000/metrics")
 
     print(">>> Запуск Security Proxy...")
     print(f"    Веб:     внешний порт {PROXY_PORT_WEB}")

@@ -1,0 +1,62 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.app
+    container_name: warehouse-app
+    networks:
+      - internal-net
+    restart: unless-stopped
+
+  proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile.proxy
+    container_name: security-proxy
+    ports:
+      - "9000:9000"   # Web UI
+      - "9001:9001"   # DB Mock
+      - "9002:9002"   # Admin Console
+    depends_on:
+      - app
+    networks:
+      - internal-net
+      - external-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - internal-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - internal-net
+      - external-net
+    restart: unless-stopped
+
+networks:
+  internal-net:
+    internal: true   # недоступна извне, только между сервисами
+  external-net:
+    internal: false  # для внешнего доступа к прокси
+
+volumes:
+  grafana-storage:
