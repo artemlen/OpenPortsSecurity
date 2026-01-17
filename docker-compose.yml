@@ -16,10 +16,14 @@ services:
       context: ./proxy
       dockerfile: Dockerfile.proxy
     container_name: security-proxy
+    environment:
+      - TZ=Europe/Moscow 
     ports:
       - "9000:9000"   # Web UI
       - "9001:9001"   # DB Mock
       - "9002:9002"   # Admin Console
+    volumes:
+      - ./proxy_logs:/proxy/logs
     depends_on:
       - app
     networks:
@@ -34,6 +38,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
     networks:
       - internal-net
     restart: unless-stopped
@@ -60,3 +65,4 @@ networks:
 
 volumes:
   grafana-storage:
+  prometheus-data:
