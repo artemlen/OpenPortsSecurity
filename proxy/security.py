@@ -110,6 +110,7 @@ def proxy_http(client_sock, client_addr):
             # Подмена заголовков
             resp_str = re.sub(r'^Server:.*$', 'Server: Apache/2.4.52', resp_str, flags=re.MULTILINE)
             resp_str = re.sub(r'Warehouse ERP v2\.4', 'Internal Portal', resp_str, flags=re.IGNORECASE)
+            resp_str = re.sub(r'Powered by Python Legacy Backend', 'Powered by Secure Sys', resp_str) 
             
             # 1. Метрика (До отправки!)
             REQUESTS_TOTAL.labels(port=port_label, action="allowed_with_filtering").inc()
