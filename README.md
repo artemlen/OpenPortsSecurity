@@ -129,19 +129,28 @@ tail -f proxy_logs/security_events.log
 ```text
 warehouse-security-pattern/
 ├── app/                 
-│   ├── app.py                # Само защищаемое приложение
-│   └── Dockerfile.app        # Необходим для сборки образа контейнера
-├── monitoring/              
+│   ├── app.py                                                      # Само защищаемое приложение
+│   └── Dockerfile.app                                              # Необходим для сборки образа контейнера
+├── monitoring/ 
+│   ├── grafana 
+│   │   ├── dashboards
+│   │   │   └──Threat Intelligence Dashboard-1768739388107.json     # JSON С настройками Grafana
+│   │   └── provisioning
+│   │       ├──dashboards
+│   │       │   └──dashboard.yml                                    # Чтобы Grafana грузила JSON
+│   │       └── datasources
+│   │           └──datasource.yml                                   # Чтобы Grafana сама подключалась к Prometheus
+│   ├── prometheus.yml
 ├── proxy/               
-│   ├── Dockerfile.proxy      # Необходим для сборки образа контейнера
-│   └── security.py           # Модуль защиты
+│   ├── Dockerfile.proxy                                            # Необходим для сборки образа контейнера
+│   └── security.py                                                 # Модуль защиты
 ├── proxy_logs/ 
-│   └── security_events.log   # Логи модуля защиты
+│   └── security_events.log                                         # Логи модуля защиты
 ├── scanner/   
-│   ├── scanner.py            # Выполняет запроосы на порты с подробным отчетом по найденным уязвимостям (модуль нападения)
-│   └── spam.py               # Можно выполинть, если нужно много ччастых запросов на порты
-├── docker-compose.yml        # Оркестрация
-├── recon_report.json         # Файл отчета scanner.py
+│   ├── scanner.py                                                  # Выполняет запроосы на порты с подробным отчетом по найденным уязвимостям (модуль нападения)
+│   └── spam.py                                                     # Можно выполинть, если нужно много ччастых запросов на порты
+├── docker-compose.yml                                              # Оркестрация
+├── recon_report.json                                               # Файл отчета scanner.py
 └── README.md
 ```
 
