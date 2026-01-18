@@ -50,8 +50,20 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Разрешаем анонимный доступ (опционально, чтобы не вводить пароль)
+      # - GF_AUTH_ANONYMOUS_ENABLED=true 
     volumes:
+      # Хранилище (все равно оставим, чтобы хранить сессии)
       - grafana-storage:/var/lib/grafana
+      
+      # 1. Авто-настройка источника данных (Prometheus)
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      
+      # 2. Конфиг дашбордов
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      
+      # 3. Сам JSON файл с графиками 
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards_json
     networks:
       - internal-net
       - external-net
